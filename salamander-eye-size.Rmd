@@ -9,15 +9,6 @@ output:
     toc_float: TRUE
     code_fold: hide
 ---
-Hi I'm changing something
-
-```{r packages, eval = FALSE, include = FALSE}
-
-#install ggtree package from Bioconductor
-if (!requireNamespace("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
-BiocManager::install("ggtree") 
-```
 
 ```{r setup, include = FALSE}
 
@@ -30,7 +21,7 @@ library(ape)
 library(evobiR)
 library(geiger)
 library(caper)
-library(phytools)
+library(phytools) 
 library(phylotools)
 library(plotly)
 library(kableExtra)
@@ -78,7 +69,7 @@ We coded 6 ecological traits for each species from published literature into bin
 ```{r trait-data, results = "hide"}
 
 #Import ecological trait data
-traits <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/salamander_traits_all.csv"))
+traits <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/salamanders_traits.csv"))
 
 #Change "Unknown" trait categorizations to NA so they will be excluded from statistical comparisons
 traits.subset <- traits %>%
@@ -164,10 +155,10 @@ av.edsvl <- salamanders %>%
   summarise(eye_av = mean(eyemean), svl_av = mean(SVL_mm), n = n())
 
 ## Merge data means with other column info
-av.edsvl <- merge(av.edsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+av.edsvl <- merge(av.edsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
 
 #Keep averages and associated traits only
-av.edsvl <- av.edsvl %>% select(Genus_Species, eye_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Both, Development, Life_history, Larval_habitat, SSD) 
+av.edsvl <- av.edsvl %>% select(Genus_Species, eye_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
 
 ##### eye diameter vs. the cube root of mass #####
 
@@ -182,7 +173,7 @@ av.edmass <- salamanders %>%
 av.edmass <- merge(av.edmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
 
 #Keep averages and associated traits only
-av.edmass <- av.edmass %>% select(Genus_Species, eye_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Both, Development, Life_history, Larval_habitat, SSD) 
+av.edmass <- av.edmass %>% select(Genus_Species, eye_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
 
 ##### cube root of mass vs. SVL #####
 
@@ -197,53 +188,79 @@ av.svlmass <- salamanders %>%
 av.svlmass <- merge(av.svlmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
 
 #Keep averages and associated traits only
-av.svlmass <- av.svlmass %>% select(Genus_Species, svl_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Both, Development, Life_history, Larval_habitat, SSD) 
+av.svlmass <- av.svlmass %>% select(Genus_Species, svl_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD)
+```
 
-##### cornea diameter vs. eye diameter #####
 
-# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
-av.edcd <- salamanders %>% 
-  filter(!(is.na(cormean)|is.na(eyemean))) %>% 
-  mutate_if(is.character, as.factor) %>% 
-  filter(!is.na(eyemean) | !is.na(cormean)) %>% 
-  group_by(Genus_Species) %>%
-  summarise(eye_av = mean(eyemean), cornea_av = mean(cormean), n = n())
+```{r}
+activity_period <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/activity_period.csv"))
+salamanders2 <- merge(av.edmass, activity_period, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+salamanders3 <- na.omit(salamanders2)
+ggplot(salamanders3, aes(y=eye_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Activity_period)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") 
 
-## Merge data means with other column info
-av.edcd <- merge(av.edcd, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+adult_habitat <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/adult_habitat.csv"))
+salamanders4 <- merge(av.edmass, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+salamanders5 <- na.omit(salamanders4)
+ggplot(salamanders5, aes(y=eye_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Adult_habitat)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") 
 
-#Keep averages and associated traits only
-av.edcd <- av.edcd %>% select(Genus_Species, eye_av, cornea_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Both, Development, Life_history, Larval_habitat, SSD)
+salamanders6 <- merge(av.edsvl, activity_period, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+salamanders7 <- na.omit(salamanders6)
+ggplot(salamanders7, aes(y=eye_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Activity_period)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "SVL (mm)") 
 
-##### cornea diameter vs. snout vent length #####
+salamanders8 <- merge(av.svlmass, activity_period, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+salamanders9 <- na.omit(salamanders8)
+ggplot(salamanders9, aes(y=rootmass_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Activity_period)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cube root of mass (g)") +
+  scale_x_log10(name = "SVL (mm)") 
 
-# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
-av.cdsvl <- salamanders %>% 
-  mutate_if(is.character, as.factor) %>% 
-  filter(!(is.na(cormean) | is.na(SVL_mm))) %>% 
-  group_by(Genus_Species) %>%
-  summarise(cornea_av = mean(cormean), svl_av = mean(SVL_mm), n = n())
+development <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/development.csv"))
+salamanders10 <- merge(av.edmass, development, by="Genus_Species", all.x = TRUE, all.y= FALSE)
+salamanders11 <- na.omit(salamanders10)
+ggplot(salamanders11, aes(y=eye_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Development)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") 
+```
 
-## Merge data means with other column info
-av.cdsvl <- merge(av.cdsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
 
-#Keep averages and associated traits only
-av.cdsvl <- av.cdsvl %>% select(Genus_Species, cornea_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Both, Development, Life_history, Larval_habitat, SSD)
+```{r}
 
-##### cornea diameter vs. cube root of mass #####
+ggplot(data = salamanders5, aes(x = Adult_habitat, y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Adult_habitat, text = Genus_Species), shape = 19, size = 3, alpha = 0.9, position = position_jitter(0.15)) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_x_discrete(labels=c("Aq.", "Semiaq.", "Foss.", "Subfoss.", "Ground", "Scans.")) +
+  ylab("Eye diameter (mm)") +
+  xlab("Adult habitat") +
+  theme(legend.position = "none")
 
-# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
-av.cdmass <- salamanders %>% 
-  mutate_if(is.character, as.factor) %>% 
-  filter(!(is.na(cormean) | is.na(rootmass))) %>% 
-  group_by(Genus_Species) %>%
-  summarise(cornea_av = mean(cormean), rootmass_av = mean(rootmass), n = n())
-
-## Merge data means with other column info
-av.cdmass <- merge(av.cdmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
-
-#Keep averages and associated traits only
-av.cdmass <- av.cdmass %>% select(Genus_Species, cornea_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Both, Development, Life_history, Larval_habitat, SSD) 
 ```
 
 ## Phylogenetic generalised least squares regressions
@@ -259,16 +276,16 @@ We fit PGLS models using the modified Feng et al. (2017) phylogeny and our avera
 #### check for best model of correlation structure ####
 
 #Make list of taxa to drop (in tree but not in dataset)
-drops <- setdiff(salamander.tree$tip.label, as.character(av.edmass$mod_tiplabel))
+drops <- setdiff(caudatatree$tip.label, as.character(av.edmass$mod_tiplabel))
 
 #Drop unwanted tips from phylogeny
-tree.edit <- drop.tip(phy = salamander.tree, tip = drops) 
+tree.edit <- drop.tip(phy = caudatatree, tip = drops) 
 
 #Make row names of the species the phylogeny tip labels
 rownames(av.edmass) <- av.edmass$mod_tiplabel
 
 #Reorder species data to match phylogeny order
-dat <-ReorderData(tree.edit, av.edmass, taxa.names="row names")
+dat <-ReorderData(tree.edit, av.edmass, taxa.names="row.names")
 
 #test whether BM or OU model is better fit for PGLS using the nlme package and AIC comparison
 
@@ -286,10 +303,10 @@ anova(pglsBM, pglsOU, pglsPagel)
 #### prep data ####
 
 #check that names match in dataframe and tree
-name.check(phy = frog.tree, data = av.edmass, data.names = av.edmass$mod_tiplabel)
+name.check(phy = caudatatree, data = av.edmass, data.names = av.edmass$mod_tiplabel)
 
 #use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
-edmass.comp <- comparative.data(phy = frog.tree, data = av.edmass, 
+edmass.comp <- comparative.data(phy = caudatatree, data = av.edmass, 
                             names.col = mod_tiplabel, vcv = TRUE, 
                             na.omit = FALSE, warn.dropped = TRUE)
 
