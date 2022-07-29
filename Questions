@@ -1,1 +1,8 @@
-In the salamander-PGLS markdown, in line 35 when it makes a list of taxa to drop from the tree to not be used in the analyses (those that I don't have an external eye diameter measurement for, like some of the aquatic ones) the list just includes every species. So, when I go to run the models, there is no data to run it with because R has dropped these 'unwanted' tips from the phylogeny. I think what might be happening is in the tree, the names are written like 'Dicamptodon copei', and in my datasets I have it written like 'Dicamptodon_copei'. If this is the reason why it's not working, should I change one of them to be consistent? Or if you see another problem, let me know.
+In the salamander-PGLS markdown, in line 35 when it makes a list of taxa to drop from the tree to 
+not be used in the analyses (those that I don't have an external eye diameter measurement for, 
+like some of the aquatic ones) the list just includes every species. So, when I go to run the 
+models, there is no data to run it with because R has dropped these 'unwanted' tips from the 
+phylogeny. I think what might be happening is in the tree, the names are written like 
+'Dicamptodon copei', and in my datasets I have it written like 'Dicamptodon_copei'. If this is 
+the reason why it's not working, should I change one of them to be consistent? Or if you see 
+another problem, let me know.
