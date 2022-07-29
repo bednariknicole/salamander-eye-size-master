@@ -1,6 +1,27 @@
-## Phylogenetic generalised least squares regressions
+---
+title: "Salamander eye scaling and investment - PGLS"
+author: "Nicole Bednarik"
+date: July 2022
+output:
+  html_document:
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    code_fold: hide
+---
 
-We fit PGLS models using the modified Feng et al. (2017) phylogeny and our averaged species data for morphological traits. 
+## Molecular phylogeny
+
+Here we import an amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset. 
+
+```{r}
+caudatatree <- read.nexus("/Users/nicolebednarik/Desktop/salamander-eye-size-master/caudata-tree")
+plot.phylo(caudatatree, show.tip.label=TRUE)
+```
+
+# Phylogenetic generalised least squares regressions
+
+We fit PGLS models using the modified Jetz and Pyron (2019) phylogeny and our averaged species data for morphological traits.
 
 ### PGLS of log eye diameter vs. log cube root of mass
 
