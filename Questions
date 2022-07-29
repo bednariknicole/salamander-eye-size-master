@@ -7,4 +7,8 @@ phylogeny. I think what might be happening is in the tree, the names are written
 recognizes that none of them match. If this is the reason why it's not working, should I change 
 one of them to be consistent? Or if you see another problem, let me know.
 
+Additionally, is there a way to stretch the phylogenetic tree vertically in R? It is so smushed 
+together that I cannot read the species names. Is this just an issue with how the file was
+saved on my computer?
+
 I also uploaded the most updated versions of the csv files I used in the Data folder.
