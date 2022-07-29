@@ -6,3 +6,5 @@ phylogeny. I think what might be happening is in the tree, the names are written
 'Dicamptodon copei', and in my datasets I have it written like 'Dicamptodon_copei', so R 
 recognizes that none of them match. If this is the reason why it's not working, should I change 
 one of them to be consistent? Or if you see another problem, let me know.
+
+I also uploaded the most updated versions of the csv files I used in the Data folder.
