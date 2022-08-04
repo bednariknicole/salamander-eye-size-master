@@ -14,9 +14,9 @@ output:
 
 Here we import an amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset. 
 
-```{r}
-caudatatree <- read.nexus("/Users/nicolebednarik/Desktop/salamander-eye-size-master/caudata-tree")
-plot.phylo(caudatatree, show.tip.label=TRUE)
+```{r, fig.height=12, fig.width=5}
+caudatatree <- read.nexus("Data/caudata-tree")
+plot.phylo(caudatatree, show.tip.label=TRUE, cex = 0.5)
 ```
 
 # Phylogenetic generalised least squares regressions
