@@ -49,7 +49,7 @@ First we import our tidied salamander morphology & trait dataset.
 ```{r load-data}
 
 # Import tidied salamander eye size and trait data
-salamanders <- data.frame(read.csv("../Data/Tidy/salamanders_tidy.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+salamanders <- data.frame(read.csv("Data/Tidy/salamanders_tidy.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
 
 # Quick look at data structure
 str(salamanders)
@@ -60,7 +60,7 @@ Next, we import the amphibian tree from Jetz and Pyron (2019) that has been prun
 ```{r, fig.height=18, fig.width=7}
 
 #Import pruned phylogeny
-caudatatree <- read.nexus("../Data/Tidy/caudata-tree.nex")
+caudatatree <- read.nexus("Data/Tidy/caudata-tree.nex")
 
 #Plot tree
 plot.phylo(caudatatree, show.tip.label=TRUE, cex = 0.7)
