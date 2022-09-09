@@ -46,8 +46,8 @@ First we import our tidied salamander morphology & trait binary dataset with the
 ```{r load-data}
 
 # Import tidied salamander eye size and trait data
-sal.res <- data.frame(read.csv("../Data/Tidy/salamanders_residuals_binary.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
-sal.res.2 <- data.frame(read.csv("../Data/Tidy/salamanders_residuals_updated.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
+sal.res <- data.frame(read.csv("../Data/salamanders_residuals_binary.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+sal.res.2 <- data.frame(read.csv("../Data/salamanders_residuals_updated.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
 
 # Quick look at data structure
 str(sal.res)
