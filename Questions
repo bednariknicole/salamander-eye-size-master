@@ -7,8 +7,21 @@ phylogeny. I think what might be happening is in the tree, the names are written
 recognizes that none of them match. If this is the reason why it's not working, should I change 
 one of them to be consistent? Or if you see another problem, let me know.
 
+> Your problem here is that you haven't yet put your data into a dataframe or inputted it, so av.edmass doesn't have any data in it, which is why it's saying none of your data matches the phylogeny. 
+
 Additionally, is there a way to stretch the phylogenetic tree vertically in R? It is so smushed 
 together that I cannot read the species names. Is this just an issue with how the file was
 saved on my computer?
+
+>yes, you can control the dimensions in the header of the r chunk. example:
+
+```{r, fig.height=12, fig.width=5}
+
+```
+
+You can also adjust the size of the text on the tip labels using cex. example:
+
+plot.phylo(caudatatree, show.tip.label=TRUE, cex = 0.5)
+
 
 I also uploaded the most updated versions of the csv files I used in the Data folder.
