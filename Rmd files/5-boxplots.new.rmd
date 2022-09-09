@@ -574,7 +574,7 @@ p2 <- facet_plot(p, panel="Cornea diameter (mm)", data=sal.phy, geom=geom_segmen
                      name = "Adult habitat")
 
 # Make a third plot next to the first two (bars for relative cornea size)
-p3 <- facet_plot(p2, panel='Relative cornea size', data=sal.phy, geom=geom_segment, aes(x=0, xend=pglsres.cdmass, y=y, yend=y, color = hab), size=3) +
+p3 <- facet_plot(p2, panel='Relative cornea size', data=sal.phy, geom=geom_segment, aes(x=0, xend=pglsres.cdmass, y=y, yend=y, color = hab), size=3, alpha = 0.7) +
   theme_tree2(legend.position=c(.07, .93)) +# add scale bars and move legends
   scale_color_manual(values = col_hab,
                      name = "Adult habitat")
