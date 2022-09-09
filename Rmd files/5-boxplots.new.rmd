@@ -14,15 +14,7 @@ output:
 
 # Load package libraries
 library(plyr)
-library(smatr)
-library(picante)
-library(nlme)
-library(ape)
-library(evobiR)
-library(geiger)
 library(caper)
-library(phytools)
-library(phylotools)
 library(plotly)
 library(kableExtra)
 library(gridExtra)
@@ -31,7 +23,6 @@ library(grid)
 library(gtable)
 library(cowplot)
 library(knitr)
-library(mvMORPH)
 library(tidyverse)
 
 # Markdown settings
