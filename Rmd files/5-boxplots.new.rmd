@@ -290,7 +290,7 @@ cave_dwelling.rel <- ggplot(data = filter(sal.res, !is.na(Cave_dwelling)), aes(x
   theme(legend.position = "none")
 
 #print plot
-subfossorial.rel
+cave_dwelling.rel
 ```
 
 ##Eye size and investment across adult habitats
@@ -329,6 +329,7 @@ adult_habitat.rel <- ggplot(data = filter(sal.res.2, !is.na(Adult.Habitat)), aes
 #print plot
 adult_habitat.rel
 ```
+
 ##Eye size and investment relationship with development type
 
 ```{r}
