@@ -1,0 +1,343 @@
+---
+title: "Salamander eye scaling and investment - loading data and initial graphs"
+author: "Nicole Bednarik"
+date: July 2022
+output:
+  html_document:
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    code_fold: hide
+---
+
+```{r setup, include = FALSE}
+
+# Load package libraries
+library(plyr)
+library(smatr)
+library(picante)
+library(nlme)
+library(ape)
+library(evobiR)
+library(geiger)
+library(caper)
+library(phytools) 
+library(phylotools)
+library(plotly)
+library(kableExtra)
+library(gridExtra)
+library(ggimage)
+#library(ggtree)
+library(grid)
+library(gtable)
+library(cowplot)
+library(knitr)
+library(mvMORPH)
+#library(evomap)
+library(tidyverse)
+
+# Markdown settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.height = 4.5, fig.width=8)
+
+```
+
+# Data
+
+## Morphological measurements
+
+We recorded 6 morphological measurements from each salamander specimen: snout-vent length, wet mass, corneal diameters (left and right), and transverse eye diameters (left and right). Symmetrical measures (e.g. eye diameters) were averaged for each individual prior to further analysis. 
+
+```{r load-data}
+
+# Load raw data for measured frog specimens
+salamanders_morph <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/salamanders_analysis.csv", header=TRUE, na.strings=c("", "NA", " ","<1"))) #load raw data
+
+# Tidy dataset for analysis
+salamanders.subset <- salamanders_morph %>%
+  mutate(rootmass = Mass_g^(1/3)) %>% #adds cube root of mass
+  mutate(eyemean = rowMeans(salamanders_morph[c('ED_right_mm', 'ED_left_mm')], na.rm=TRUE)) %>% #adds mean of L/R eyes
+  mutate(cormean = rowMeans(salamanders_morph[c('CD_right_mm', 'CD_left_mm')], na.rm=TRUE)) %>%  #adds mean of L/R corneas
+  mutate(eyemean = na_if(eyemean, "NaN")) %>% #remove missing values
+  mutate(cormean = na_if(cormean, "NaN")) %>% #remove missing values
+  select(Order, Suborder, Family, Subfamily, Genus, Species, Genus_Species, SVL_mm, Mass_g, rootmass, ED_right_mm, ED_left_mm, eyemean, CD_right_mm, CD_left_mm, cormean) #keeps only columns of interest for analyses
+```
+
+## Ecological traits
+
+We coded 6 ecological traits for each species from published literature into binary categories, and then merged this data with our specimen measurements by genus and species. 
+
+```{r trait-data, results = "hide"}
+
+#Import ecological trait data
+traits <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/salamanders_traits.csv"))
+
+#Change "Unknown" trait categorizations to NA so they will be excluded from statistical comparisons
+traits.subset <- traits %>%
+  mutate(Aquatic = factor(na_if(Aquatic, "Unknown"))) %>%
+  mutate(Semiaquatic = factor(na_if(Semiaquatic, "Unknown"))) %>%
+  mutate(Terrestrial = factor(na_if(Terrestrial, "Unknown"))) %>%
+  mutate(Scansorial = factor(na_if(Scansorial, "Unknown"))) %>%
+  mutate(Fossorial = factor(na_if(Fossorial, "Unknown"))) %>%
+  mutate(Subfossorial = factor(na_if(Subfossorial, "Unknown"))) %>%
+  mutate(Cave_dwelling = factor(na_if(Cave_dwelling, "Unknown"))) %>%
+  mutate(Nocturnal = factor(na_if(Nocturnal, "Unknown"))) %>%
+  mutate(Diurnal = factor(na_if(Diurnal, "Unknown"))) %>%
+  mutate(Paedomorphic = factor(na_if(Paedomorphic, "Unknown"))) %>%
+  mutate(Metamorphosizing = factor(na_if(Metamorphosizing, "Unknown"))) %>%
+  mutate(Direct_Development = factor(na_if(Direct_Development, "Unknown"))) %>%
+  mutate(Free_living = factor(na_if(Free_living, "Unknown"))) %>%
+  mutate(No_free_living = factor(na_if(No_free_living, "Unknown"))) %>%
+  mutate(Lentic_water = factor(na_if(Lentic_water, "Unknown"))) %>%
+  mutate(Lotic_water = factor(na_if(Lotic_water, "Unknown"))) %>%
+  mutate(Both_water = factor(na_if(Both_water, "Unknown"))) %>%
+  mutate(No_larva = factor(na_if(No_larva, "Unknown"))) %>%
+  mutate(Females_larger = factor(na_if(Females_larger, "Unknown"))) %>%
+  mutate(Males_larger = factor(na_if(Males_larger, "Unknown"))) %>%
+  mutate(No_SSD = factor(na_if(No_SSD, "Unknown"))) %>%
+  select(Genus_Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+# Merge morphology dataset with ecological trait dataset
+salamanders <- merge(salamanders.subset, traits.subset, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+
+# Check structure of final dataframe for analyses (numbers and factors in propoer columns)
+str(salamanders)
+```
+
+## Sampling
+
+We sampled all 9 extant caudata families, and morphological sampling for interspecific analysis ranged from n = 1 to n = 6 individuals for each species (based on availability in the collections).
+
+```{r sampling, results = "hide"}
+
+#Number of species and individuals sampled 
+counts <-ddply(salamanders, .(salamanders$Family, salamanders$Subfamily, salamanders$Genus, salamanders$Species), nrow)
+names(counts) <- c("Family","Subfamily", "Genus","Species","Sampled")
+
+#create scrolling RMarkdown table of sampling
+kable(counts[ , c("Family","Genus","Species","Sampled")], caption = "Species and sampling effort for morphological data from museum specimens.") %>%
+  kable_styling(full_width = F) %>%
+  collapse_rows(columns = 1, valign = "top") %>%
+  scroll_box(height = "500px")
+
+#export sampling data for supplement
+write.csv(counts, file = "/Users/nicolebednarik/Desktop/salamander-eye-size-master/sampling.csv")
+
+```
+
+## Molecular phylogeny
+
+Here we import an amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset. 
+
+```{r, fig.height=14, fig.width=5}
+caudatatree <- read.nexus("/Users/nicolebednarik/Desktop/salamander-eye-size-master/caudata-tree")
+plot.phylo(caudatatree, show.tip.label=TRUE)
+```
+
+# Interspecific allometry
+
+## Species means for morphological comparisons
+
+We then found species means for various morphological parameters. In order to keep as many specimens as possible in our comparisons, we created a new dataframe for each set of morphological comparisons, so that the few specimens with missing data for one parameter could still be used in comparisons not including that parameter. 
+
+```{r species-av}
+## SPECIES AVERAGES FOR VARIOUS COMPARISONS
+
+##### eye diameter vs. snout vent length #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.edsvl <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(SVL_mm))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), svl_av = mean(SVL_mm), n = n())
+
+## Merge data means with other column info
+av.edsvl <- merge(av.edsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.edsvl <- av.edsvl %>% select(Genus_Species, eye_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
+
+#Load Adult Habitat dataset
+adult_habitat <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/adult_habitat.csv"))
+
+## Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.edsvl.habitat1 <- merge(av.edsvl, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.edsvl.habitat <- na.omit(av.edsvl.habitat1)
+
+##Plot average eye diameter (mm) against SVL (mm)
+ggplot(av.edsvl.habitat, aes(y=eye_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2, aes(color=Adult_habitat)) +
+   theme_bw() +
+  scale_color_manual(values=c("magenta", "7F00FF", "blue", "#E80A0A", "#00CC00")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "SVL (mm)") 
+```
+
+```{r}
+##### eye diameter vs. the cube root of mass #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.edmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.edmass <- merge(av.edmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.edmass <- av.edmass %>% select(Genus_Species, eye_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
+
+# Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.edmass.habitat1 <- merge(av.edmass, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.edmass.habitat <- na.omit(av.edmass.habitat1)
+
+#Plot average eye diameter (mm) against SVL (mm)
+ggplot(av.edmass.habitat, aes(y=eye_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2, aes(color=Adult_habitat)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") +
+  geom_abline(slope = coef(pgls_edmass)[[2]], intercept = coef(pgls_edmass)[[1]], linetype = "solid") #plots PGLS fit with solid line
+
+```
+
+```{r}
+##### cube root of mass vs. SVL #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.svlmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(SVL_mm) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(svl_av = mean(SVL_mm), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.svlmass <- merge(av.svlmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.svlmass <- av.svlmass %>% select(Genus_Species, svl_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+# Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.svlmass.habitat1 <- merge(av.svlmass, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.svlmass.habitat <- na.omit(av.svlmass.habitat1)
+ggplot(av.svlmass.habitat, aes(y=svl_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2, aes(color=Adult_habitat)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cube root of mass (g)") +
+  scale_x_log10(name = "SVL (mm)") 
+```
+
+```{r}
+##### cornea diameter vs. eye diameter #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.edcd <- salamanders %>% 
+  filter(!(is.na(cormean)|is.na(eyemean))) %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!is.na(eyemean) | !is.na(cormean)) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), cornea_av = mean(cormean), n = n())
+
+## Merge data means with other column info
+av.edcd <- merge(av.edcd, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.edcd <- av.edcd %>% select(Genus_Species, eye_av, cornea_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
+
+# Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.edcd.habitat1 <- merge(av.edcd, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.edcd.habitat <- na.omit(av.edcd.habitat1)
+ggplot(av.edcd.habitat, aes(y=cornea_av, x=eye_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Adult_habitat)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cornea diameter (mm)") +
+  scale_x_log10(name = "Eye diameter (mm)") 
+```
+
+
+```{r}
+##### cornea diameter vs. snout vent length #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.cdsvl <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(SVL_mm))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cornea_av = mean(cormean), svl_av = mean(SVL_mm), n = n())
+
+## Merge data means with other column info
+av.cdsvl <- merge(av.cdsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cdsvl <- av.cdsvl %>% select(Genus_Species, cornea_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
+
+# Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.cdsvl.habitat1 <- merge(av.cdsvl, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.cdsvl.habitat <- na.omit(av.cdsvl.habitat1)
+ggplot(av.cdsvl.habitat, aes(y=cornea_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Adult_habitat)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cornea diameter (mm)") +
+  scale_x_log10(name = "SVL (mm)") 
+```
+
+```{r}
+##### cornea diameter vs. cube root of mass #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.cdmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cornea_av = mean(cormean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.cdmass <- merge(av.cdmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cdmass <- av.cdmass %>% select(Genus_Species, cornea_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+# Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.cdmass.habitat1 <- merge(av.cdmass, adult_habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.cdmass.habitat <- na.omit(av.cdmass.habitat1)
+ggplot(av.cdmass.habitat, aes(y=cornea_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=4, aes(color=Adult_habitat)) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cornea diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") 
+```
+
+
+## Initial boxplot of eye diameter by adult habitat (not taking into account mass/SVL)
+
+```{r}
+
+ggplot(data = salamanders5, aes(x = Adult_habitat, y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Adult_habitat, text = Genus_Species), shape = 19, size = 3, alpha = 0.9, position = position_jitter(0.15)) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_x_discrete(labels=c("Aq.", "Semiaq.", "Foss.", "Subfoss.", "Ground", "Scans.")) +
+  ylab("Eye diameter (mm)") +
+  xlab("Adult habitat") +
+  theme(legend.position = "none")
+
+```
+

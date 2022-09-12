@@ -1,0 +1,412 @@
+---
+title: "Salamander eye scaling and investment"
+author: "Nicole Bednarik & Katie Thomas"
+date: 8 August 2022
+output:
+  html_document:
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    code_fold: show
+---
+
+
+```{r setup, include = FALSE}
+
+# Load package libraries
+library(plyr)
+library(smatr)
+library(picante)
+library(nlme)
+library(ape)
+library(evobiR)
+library(geiger)
+library(caper)
+library(phytools)
+library(phylotools)
+library(plotly)
+library(kableExtra)
+library(gridExtra)
+library(ggimage)
+#library(ggtree)
+library(grid)
+library(gtable)
+library(cowplot)
+library(knitr)
+library(mvMORPH)
+#library(evomap)
+library(tidyverse)
+
+# Markdown settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.height = 4.5, fig.width=8)
+
+```
+
+# Data
+
+First we import our tidied salamander morphology & trait dataset. 
+
+```{r load-data}
+
+# Import tidied salamander eye size and trait data
+salamanders <- data.frame(read.csv("Data/Tidy/salamanders_tidy.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+
+# Quick look at data structure
+str(salamanders)
+```
+
+Next, we import the amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset.
+
+```{r, fig.height=18, fig.width=7}
+
+#Import pruned phylogeny
+caudatatree <- read.nexus("Data/Tidy/caudata-tree.nex")
+
+#Plot tree
+plot.phylo(caudatatree, show.tip.label=TRUE, cex = 0.7)
+
+```
+
+# Data exploration
+
+First, we can take a preliminary look at all of our data so that we can see how it looks and whether we notice any obvious outliers that we might want to go back and check out. Here we plot out our measurements from the right side vs. the left side of each specimen so that we can make sure that we have consistent measurements throughout the dataset. We use the package plotly to create interactive plots - hover over a point to see the name of the species measured. 
+
+
+## Right eyes vs. left eyes
+
+We expect that measurements of left and right eyes and corneas should be similar within specimens. We can plot out our data to test for this and make sure we don't see any glaring issues. We can also fit a regression, which we would expect to have a slope near 1 and an intercept near 0 if left and right eye measurments are similar. 
+
+```{r}
+####right eye diameter vs. left eye diameter ####
+
+#linear model (ordinary least squares model)
+RLeye.lm <- lm(ED_right_mm ~ ED_left_mm, data = salamanders)
+summary(RLeye.lm)
+
+#plot
+RLeye.plot <- ggplot(salamanders, aes(x = ED_left_mm, y = ED_right_mm, text = Genus_Species)) +
+ geom_point(alpha = 0.9) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  geom_abline(slope = coef(RLeye.lm)[[2]], intercept = coef(RLeye.lm)[[1]]) #plots OLS fit 
+
+
+#interactive plot
+ggplotly(RLeye.plot)
+
+```
+
+As we would expect, measurements of the left and right eye are highly correlated, with a slope close to 1 and an intercept close to 0. We can do the same test for the corneal measurements. 
+
+```{r}
+####right cornea diameter vs. left cornea diameter ####
+
+#linear model (ordinary least squares model)
+RLcornea.lm <- lm(CD_right_mm ~ CD_left_mm, data = salamanders)
+summary(RLcornea.lm)
+
+#plot
+RLcor.plot <- ggplot(salamanders, aes(x = CD_left_mm, y = CD_right_mm, text = Genus_Species)) +
+ geom_point(alpha = 0.9) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  geom_abline(slope = coef(RLcornea.lm)[[2]], intercept = coef(RLcornea.lm)[[1]]) #plots OLS fit 
+
+
+#interactive plot
+ggplotly(RLcor.plot)
+
+```
+
+Again, we find that left and right corneal measurements are highly correlated, with a slope close to 1 and an intercept close to 0. Together, these results indicate that measurements were consistent between the left and right eyes of a specimen, which is good! For looking at interspecific allometry, we will calculate species means from these data so that we can use phylogenetic comparative methods. 
+
+
+
+# Interspecific allometry
+
+Here, we will use phylogenetic least-squares (PGLS) regressions to see how eyes are scaling with body size across different species of salamanders with different ecologies. PGLS analyses are similar to normal linear regressions, but also account for the non-independence of data collected from close relatives due to shared evolutionary history. 
+
+In these analyses, we will log eye size and body size variables, as this is standard for allometric relationships. 
+
+First, we will calculate the mean measurements across specimens for each species. We need to make sure in doing this that we omit rows with missing data for a variable of interest. In looking at the data, we can see that we have many more measurements for cornea diameter than for eye diameter
+
+## Species means for morphological comparisons
+
+We then find species means for various morphological parameters. There are some specimens that lack data for eye size but have data for svl, mass, and corneal diameter (these measurements are present for all specimens). However, when eye size measurements are missing, they are consistently missing for all specimens measured within a species. This means we don't have to worry about missing data for one specimen corrupting the mean across several specimens for eye size (it is either present for all specimens in a species or absent for all specimens in a species). So we can make just one dataframe of species averages, and some species will just lack eye size data. 
+
+```{r species-av}
+
+# species means for cornea data
+av.sal <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>%
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), 
+            cor_av = mean(cormean),
+            svl_av = mean(SVL_mm), 
+            rootmass_av = mean(rootmass), 
+            n = n())
+
+## Merge data means with other column info, keeping only trait columns
+av.sal <- merge(av.sal, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE) %>% 
+  select(Genus_Species, eye_av, cor_av, svl_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
+```
+
+## Phylogenetic generalised least squares regressions
+
+In order to fit a PGLS regression in caper, we first need to make a comparative data object that includes our dataset and our phylogeny. Note that the gilled Pleurodeles waltl will be dropped from this, as there can only be one row for each species. 
+
+```{r}
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.sal) <- av.sal$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.sal)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp <- comparative.data(phy = caudatatree, data = av.sal, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp$dropped$tips #phylogeny
+sal.comp$dropped$unmatched.rows #dataset
+
+```
+
+
+### log eye diameter vs. log cube root of mass
+
+```{r pgls-edmass}
+
+#PGLS eye diameter vs. cube root of mass
+pgls_edmass <- pgls(log10(eye_av) ~ log10(rootmass_av), 
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_edmass)
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.edmass <- pgls.profile(pgls_edmass, "lambda")
+plot(lambda.edmass)
+
+#print model output 
+summary(pgls_edmass)
+
+#quick plot of pgls
+plot(log10(eye_av) ~ log10(rootmass_av), data = av.sal)
+abline(pgls_edmass)
+```
+
+```{r plot-edmass} 
+#Plot average eye diameter (mm) against cube root of mass (g)
+ggplot(av.sal, aes(y=eye_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") +
+  geom_abline(slope = coef(pgls_edmass)[[2]], intercept = coef(pgls_edmass)[[1]], linetype = "solid") #plots PGLS fit with solid line
+
+```
+
+
+### PGLS of log eye diameter vs. log snout-vent length 
+
+```{r pgls-edsvl}
+
+#PGLS eye diameter vs. SVL
+pgls_edsvl <- pgls(log10(eye_av) ~ log10(svl_av), 
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_edsvl)
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.edsvl <- pgls.profile(pgls_edsvl, "lambda")
+plot(lambda.edsvl)
+
+#print model output 
+summary(pgls_edsvl)
+
+#quick plot of pgls
+plot(log10(eye_av) ~ log10(svl_av), data = av.sal)
+abline(pgls_edsvl)
+```
+
+```{r plot-edsvl} 
+#Plot average eye diameter (mm) against SVL (mm)
+ggplot(av.sal, aes(y=eye_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Eye diameter (mm)") +
+  scale_x_log10(name = "SVL (mm)") +
+  geom_abline(slope = coef(pgls_edsvl)[[2]], intercept = coef(pgls_edsvl)[[1]], linetype = "solid") #plots PGLS fit with solid line
+```
+
+### PGLS of log eye diameter vs. log cornea diameter
+
+```{r pgls-edcd}
+
+#PGLS eye diameter vs. cornea diameter
+pgls_edcd <- pgls(log10(eye_av) ~ log10(cor_av), 
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_edcd)
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.edcd <- pgls.profile(pgls_edcd, "lambda")
+plot(lambda.edcd)
+
+#print model output 
+summary(pgls_edcd)
+
+#quick plot of pgls
+plot(log10(eye_av) ~ log10(cor_av), data = av.sal)
+abline(pgls_edcd)
+```
+
+```{r plot-edcd} 
+#Plot average cornea diameter (mm) against average eye diameter (mm)
+ggplot(av.sal, aes(y=cor_av, x=eye_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cornea diameter (mm)") +
+  scale_x_log10(name = "Eye diameter (mm)") +
+  geom_abline(slope = coef(pgls_edcd)[[2]], intercept = coef(pgls_edcd)[[1]], linetype = "solid") #plots PGLS fit with solid line
+```
+
+### PGLS of log cornea diameter vs. log cube root of mass
+
+```{r pgls-cdmass}
+
+#PGLS cornea diameter vs. cube root of mass
+pgls_cdmass <- pgls(log10(cor_av) ~ log10(rootmass_av),
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_cdmass)
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.cdmass <- pgls.profile(pgls_cdmass, "lambda")
+plot(lambda.cdmass)
+
+#print model output 
+summary(pgls_cdmass)
+
+#quick plot of pgls
+plot(log10(cor_av) ~ log10(rootmass_av), data = av.sal)
+abline(pgls_cdmass)
+```
+
+```{r plot-cdmass} 
+#Plot average cornea diameter (mm) against cube root of mass (g)
+ggplot(av.sal, aes(y=cor_av, x=rootmass_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cornea diameter (mm)") +
+  scale_x_log10(name = "Cube root of mass (g)") +
+  geom_abline(slope = coef(pgls_cdmass)[[2]], intercept = coef(pgls_cdmass)[[1]], linetype = "solid") #plots PGLS fit with solid line
+```
+
+### PGLS of log cornea diameter vs. log snout-vent length 
+
+```{r pgls-cdsvl}
+
+#PGLS cornea diameter vs. SVL
+pgls_cdsvl <- pgls(log10(cor_av) ~ log10(svl_av),
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_cdsvl)
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.cdsvl <- pgls.profile(pgls_cdsvl, "lambda")
+plot(lambda.cdsvl)
+
+#print model output 
+summary(pgls_cdsvl)
+
+#quick plot of pgls
+plot(log10(cor_av) ~ log10(svl_av), data = av.sal)
+abline(pgls_cdsvl)
+```
+
+```{r plot-cdsvl} 
+#Plot average cornea diameter (mm) against SVL (mm)
+ggplot(av.sal, aes(y=cor_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cornea diameter (mm)") +
+  scale_x_log10(name = "SVL (mm)") +
+  geom_abline(slope = coef(pgls_cdsvl)[[2]], intercept = coef(pgls_cdsvl)[[1]], linetype = "solid") #plots PGLS fit with solid line
+```
+
+### PGLS of log snout-vent length vs. log cube root of mass
+
+```{r pgls-svlmass}
+
+#PGLS svl vs. cube root of mass
+pgls_svlmass <- pgls(log10(svl_av) ~ log10(rootmass_av),
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_svlmass)
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.svlmass <- pgls.profile(pgls_svlmass, "lambda")
+plot(lambda.svlmass)
+
+#print model output 
+summary(pgls_svlmass)
+
+#quick plot of pgls
+plot(log10(svl_av) ~ log10(rootmass_av), data = av.sal)
+abline(pgls_svlmass)
+```
+
+```{r plot-svlmass} 
+#Plot SVL (mm) against cube root of mass (g)
+ggplot(av.sal, aes(y=rootmass_av, x=svl_av, text=Genus_Species)) +
+  geom_point(alpha=0.9, size=2) +
+   theme_bw() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  scale_y_log10(name = "Cube root of mass (g)") +
+  scale_x_log10(name = "SVL (mm)") +
+  geom_abline(slope = coef(pgls_svlmass)[[2]], intercept = coef(pgls_svlmass)[[1]], linetype = "solid") #plots PGLS fit with solid line
+```

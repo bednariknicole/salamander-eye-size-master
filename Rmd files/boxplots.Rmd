@@ -1,0 +1,778 @@
+---
+title: "Salamander eye scaling and investment - boxplots"
+author: "Nicole Bednarik & Katie Thomas"
+date: 8 August 2022
+output:
+  html_document:
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    code_fold: show
+---
+
+```{r setup, include = FALSE}
+
+# Load package libraries
+library(plyr)
+library(smatr)
+library(picante)
+library(nlme)
+library(ape)
+library(evobiR)
+library(geiger)
+library(caper)
+library(phytools)
+library(phylotools)
+library(plotly)
+library(kableExtra)
+library(gridExtra)
+library(ggimage)
+#library(ggtree)
+library(grid)
+library(gtable)
+library(cowplot)
+library(knitr)
+library(mvMORPH)
+#library(evomap)
+library(tidyverse)
+
+# Markdown settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.height = 4.5, fig.width=8)
+
+```
+
+# Data
+
+First we import our tidied salamander morphology & trait dataset. 
+
+```{r load-data}
+
+# Import tidied salamander eye size and trait data
+salamanders <- data.frame(read.csv("../Data/Tidy/salamanders_tidy.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+
+# Quick look at data structure
+str(salamanders)
+```
+
+Next, we import the amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset.
+
+```{r, fig.height=18, fig.width=7}
+
+#Import pruned phylogeny
+caudatatree <- read.nexus("../Data/Tidy/caudata-tree.nex")
+
+#Plot tree
+plot.phylo(caudatatree, show.tip.label=TRUE, cex = 0.7)
+
+```
+
+# Interspecific allometry using PGLS
+
+Here, we will use phylogenetic least-squares (PGLS) regressions to see how eyes are scaling with body size across different species of salamanders with different ecologies. First, we find species means for various morphological parameters.
+
+```{r species-av}
+#### species means for eye diameter and SVL ####
+av.edsvl <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(SVL_mm))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), svl_av = mean(SVL_mm), n = n())
+
+## Merge data means with other column info
+av.edsvl <- merge(av.edsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.edsvl <- av.edsvl %>% select(Genus_Species, eye_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for eye diameter and cube root of mass ####
+av.edmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.edmass <- merge(av.edmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only, keeping only trait columns
+av.edmass <- av.edmass %>% select(Genus_Species, eye_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for cube root of mass and SVL ####
+av.svlmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(SVL_mm) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(svl_av = mean(SVL_mm), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.svlmass <- merge(av.svlmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.svlmass <- av.svlmass %>% select(Genus_Species, svl_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+  
+#### species means for cornea diameter and eye diameter ####
+av.cded <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(eyemean))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cor_av = mean(cormean), eye_av = mean(eyemean), n = n())
+
+## Merge data means with other column info
+av.cded <- merge(av.cded, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cded <- av.cded %>% select(Genus_Species, cor_av, eye_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for cornea diameter and SVL ####
+av.cdsvl <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(SVL_mm))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cor_av = mean(cormean), svl_av = mean(SVL_mm), n = n())
+
+## Merge data means with other column info
+av.cdsvl <- merge(av.cdsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cdsvl <- av.cdsvl %>% select(Genus_Species, cor_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for cornea diameter and cube root of mass ####
+av.cdmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cor_av = mean(cormean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.cdmass <- merge(av.cdmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cdmass <- av.cdmass %>% select(Genus_Species, cor_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+```
+
+In order to fit a PGLS regression in caper, we first need to make a comparative data object that includes our dataset and our phylogeny. Note that the gilled Pleurodeles waltl will be dropped from this, as there can only be one row for each species. 
+
+```{r}
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.edsvl) <- av.edsvl$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.edsvl)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp1 <- comparative.data(phy = caudatatree, data = av.edsvl, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp1$dropped$tips #phylogeny
+sal.comp1$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.edmass) <- av.edmass$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.edmass)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp2 <- comparative.data(phy = caudatatree, data = av.edmass, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp2$dropped$tips #phylogeny
+sal.comp2$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.svlmass) <- av.svlmass$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.svlmass)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp3 <- comparative.data(phy = caudatatree, data = av.svlmass, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp3$dropped$tips #phylogeny
+sal.comp3$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.cded) <- av.cded$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.cded)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp4 <- comparative.data(phy = caudatatree, data = av.cded, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp4$dropped$tips #phylogeny
+sal.comp4$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.cdsvl) <- av.cdsvl$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.cdsvl)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp5 <- comparative.data(phy = caudatatree, data = av.cdsvl, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp5$dropped$tips #phylogeny
+sal.comp5$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.cdmass) <- av.cdmass$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.cdmass)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp6 <- comparative.data(phy = caudatatree, data = av.cdmass, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp6$dropped$tips #phylogeny
+sal.comp6$dropped$unmatched.rows #dataset
+```
+ 
+#I'm having trouble adding residuals to my data frame in order to create the boxplots
+
+Next, we added residuals of PGLS fits to our datasets by species.
+
+```{r pgls-residuals}
+#PGLS cornea diameter vs. cube root of mass ------------
+pgls_cdmass <- pgls(log10(cor_av) ~ log10(rootmass_av), 
+               data = sal.comp6, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#Residuals for PGLS of cornea diameter ~ cube root of mass
+
+#extract pgls residuals 
+pglsres.cdmass <- residuals(pgls_cdmass) 
+
+#name residuals
+colnames(pglsres.cdmass) <- "pglsres.cdmass" 
+
+#add rownames to original dataframe
+rownames(av.cdmass) <- av.cdmass$genus_species
+
+#merge residuals with original data by rowname
+av.cdmass.phy <- merge(av.cdmass, pglsres.cdmass, by = "row.names") 
+
+#PGLS cornea diameter vs. SVL ------------
+pgls_cdsvl <- pgls(log10(cor_av) ~ log10(svl_av), 
+               data = sal.comp5, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#Residuals for PGLS of cornea diameter ~ SVL 
+
+#extract pgls residuals
+pglsres.cdsvl <- residuals(pgls_cdsvl) 
+
+#name residuals
+colnames(pglsres.cdsvl) <- "pglsres.cdsvl"
+
+#add rownames to original dataframe
+rownames(av.cdsvl) <- av.cdsvl$genus_species
+
+#merge residuals with original data by rowname
+av.cdsvl.phy <- merge(av.cdsvl, pglsres.cdsvl, by = "row.names") 
+
+#PGLS eye diameter vs. cornea diameter ------------
+pgls_cded <- pgls(log10(eye_av) ~ log10(cor_av), 
+               data = sal.comp4, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#residuals for PGLS of eye diameter ~ cornea diameter 
+
+#extract pgls residuals
+pglsres.cded <- residuals(pgls_cded) 
+
+#name residuals
+colnames(pglsres.cded) <- "pglsres.edcd" 
+
+#add rownames to original dataframe
+rownames(av.cded) <- av.cded$genus_species
+
+#merge residuals with original data by rowname
+av.cded.phy <- merge(av.cded, pglsres.cded, by = "row.names") 
+```
+
+## Eye size and investment across ecological variables 
+
+We compared the distribution of absolute and phylogenetically corrected relative eye sizes across states for each of the ecological traits we examined. 
+
+```{r trait-stats-dataframe}
+
+#Combine results from assessments of cornea v. mass, cornea v. svl, and cornea v. eye for stats (get all the pgls residuals from the various comparisons into the same dataframe)
+
+cdmass.sub <- av.cdmass.phy %>%
+  select(cor_av, pglsres.cdmass)
+
+cdsvl.sub <- av.cdsvl.phy %>%
+  select(cor_av, pglsres.cdsvl)
+
+cded.sub <- av.cded.phy %>%
+  select(cor_av, pglsres.cded)
+
+#merge subset dataframes with dplyr
+all.res <- cdmass.sub %>%
+  full_join(cdsvl.sub, by = "row.names") %>%
+  full_join(cded.sub, by = "row.names")
+
+#add traits to dataframe
+all.res.traits <- all.res %>%
+  left_join(traits, by = "row.names")
+all.res.traits <- rename(all.res.traits, "eye_av" = "eye_av.x")
+```
+
+We made boxplots to show how eye size and investment varied across states for each ecological trait. 
+
+```{r trait-boxplots}
+
+#### Boxplots of absolute eye diameter by trait states ####
+
+#create color vectors for states
+
+#create vector of colors for activity period
+col_act <- c("Both" = "deeppink3",
+             "Diurnal" = "darkgoldenrod1", 
+             "Nocturnal" = "blueviolet",
+             "Unknown" = "gray")
+
+# create vector of colors for life history
+col_mat <- c("Ground" = "wheat4", 
+         "Lentic water" = "royalblue1", 
+         "Lotic water" = "skyblue1",
+         "Plants" = "springgreen3",
+         "Unknown" = "gray")
+
+
+# create vector of colors for life history
+col_lif <- c("Free-living larvae" = "darkturquoise", 
+         "No free-living larvae" = "black", 
+         "Unknown" = "gray")
+
+# create vector of colors for larval habitat
+col_larv <- c("Lentic water" = "royalblue1", 
+         "Lotic water" = "skyblue1",
+         "No larvae" = "lightcoral",
+         "Obscured" = "darkslateblue",
+         "On land" = "lightpink4",
+         "Unknown" = "gray")
+
+# create vector of colors for sex dichromatism
+col_dich <- c("Absent" = "black", 
+         "Present" = "chartreuse2",
+         "Unknown" = "gray")
+
+#boxplot of eye size vs adult habitat
+hab.abs <- ggplot(data = filter(all.res.traits, Adult_habitat != "Unknown" & !is.na(eye_av)), 
+                  aes(x = reorder(Adult_habitat, eye_av, FUN=mean), 
+                      y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = "black", text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_hab) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_x_discrete(breaks=c("Aquatic","Semiaquatic","Fossorial", "Subfossorial", "Ground-dwelling", "Scansorial"),labels=c("Aq.", "Semiaq.", "Foss.", "Subfoss.", "Ground", "Scans.")) +
+  ylab("Eye diameter (mm)") +
+  xlab("Adult habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye size by activity period
+acper.abs <- ggplot(data = filter(all.res.traits, Activity_period != "Unknown" & !is.na(eye_av)), aes(x = reorder(Activity_period, eye_av, FUN=mean), y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Activity_period, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_act) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  ylab("Eye diameter (mm)") +
+  xlab("Activity period") +
+  theme(legend.position = "none")
+
+#boxplot of eye size by mating habitat
+mating.abs <- ggplot(data = filter(all.res.traits, Mating_habitat != "Unknown" & !is.na(eye_av)), 
+                aes(x = reorder(Mating_habitat, eye_av, FUN=mean), y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  scale_color_manual(values = col_mat) +
+  geom_jitter(aes(color = Mating_habitat, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  ylab("Mean eye diameter (mm)") +
+  xlab("Mating habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye size by life history
+life.abs <- ggplot(data = filter(all.res.traits, Life_history != "Unknown" & !is.na(eye_av)), 
+                aes(x = reorder(Life_history, eye_av, FUN=mean), y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Life_history, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_lif) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  ylab("Mean eye diameter (mm)") +
+  xlab("Life history") +
+  theme(legend.position = "none")
+
+#boxplot of eye size by larval habitat
+larval.abs <- ggplot(data = filter(all.res.traits, Larval_habitat != "Unknown" & !is.na(eye_av)), 
+                aes(x = reorder(Larval_habitat, eye_av, FUN=mean), y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Larval_habitat, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_larv) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  ylab("Mean eye diameter (mm)") +
+  xlab("Larval habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye size by sexual dichromatism
+dichrom.abs <- ggplot(data = filter(all.res.traits, Sex_dichromatism != "Unknown" & !is.na(eye_av)), 
+                aes(x = reorder(Sex_dichromatism, eye_av, FUN=mean), y = eye_av)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Sex_dichromatism, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_dich) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  ylab("Mean eye diameter (mm)") +
+  xlab("Sex dichromatism") +
+  theme(legend.position = "none")
+
+
+#### Boxplots of relative eye size (by mass) by trait states ####
+
+#boxplot of eye investment (residuals of eye diameter v. cube root of mass PGLS) by adult habitat
+hab.res.mass <- ggplot(data = filter(all.res.traits, Adult_habitat != "Unknown" & !is.na(pglsres.edmass)), 
+              aes(x = reorder(Adult_habitat, pglsres.edmass, FUN = mean), y = pglsres.edmass)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Adult_habitat, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_hab, name = "Adult habitat") +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+ scale_x_discrete(breaks=c("Aquatic", "Fossorial", "Subfossorial", "Ground-dwelling", "Scansorial", "Semiaquatic"), labels=c("Aq.", "Foss.", "Subfoss.","Ground", "Scans.", "Semiaq.")) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (mass)") +
+  xlab("Adult habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. cube root of mass PGLS) by activity period
+acper.res.mass <- ggplot(data = filter(all.res.traits, Activity_period != "Unknown" & !is.na(pglsres.edmass)), 
+                aes(x = reorder(Activity_period, pglsres.edmass, FUN=mean), y = pglsres.edmass)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Activity_period, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_act) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (mass)") +
+  xlab("Activity period") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. cube root of mass PGLS) by mating habitat
+mating.res.mass <- ggplot(data = filter(all.res.traits, Mating_habitat != "Unknown" & !is.na(pglsres.edmass)), 
+                aes(x = reorder(Mating_habitat, pglsres.edmass, FUN=mean), y = pglsres.edmass)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  scale_color_manual(values = col_mat) +
+  geom_jitter(aes(color = Mating_habitat, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (mass)") +
+  xlab("Mating habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. cube root of mass PGLS) by life history
+life.res.mass <- ggplot(data = filter(all.res.traits, Life_history != "Unknown" & !is.na(pglsres.edmass)), 
+                aes(x = reorder(Life_history, pglsres.edmass, FUN=mean), y = pglsres.edmass)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) + 
+  geom_jitter(aes(color = Life_history, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_lif) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (mass)") +
+  xlab("Life history") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. cube root of mass PGLS) by larval habitat
+larval.res.mass <- ggplot(data = filter(all.res.traits, Larval_habitat != "Unknown" & !is.na(pglsres.edmass)), 
+                aes(x = reorder(Larval_habitat, pglsres.edmass, FUN=mean), y = pglsres.edmass)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Larval_habitat, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_larv) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                    labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (mass)") +
+  xlab("Larval habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. cube root of mass PGLS) by sexual dichromatism
+dichrom.res.mass <- ggplot(data = filter(all.res.traits, Sex_dichromatism != "Unknown" & !is.na(pglsres.edmass)), 
+                aes(x = reorder(Sex_dichromatism, pglsres.edmass, FUN=mean), y = pglsres.edmass)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Sex_dichromatism, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_dich) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (mass)") +
+  xlab("Sex dichromatism") +
+  theme(legend.position = "none")
+
+
+#### Boxplots of relative eye size (by SVL) by trait states ####
+
+#boxplot of eye investment (residuals of eye diameter v. SVL PGLS) by adult habitat
+hab.res.svl <- ggplot(data = filter(all.res.traits, Adult_habitat != "Unknown" & !is.na(pglsres.edsvl)), 
+              aes(x = reorder(Adult_habitat, pglsres.edsvl, FUN=mean), y = pglsres.edsvl)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Adult_habitat, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_hab, name = "Adult habitat") +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+ scale_x_discrete(breaks=c("Aquatic","Semiaquatic","Fossorial", "Subfossorial", "Ground-dwelling", "Scansorial"), labels=c("Aq.", "Semiaq.", "Foss.", "Subfoss.", "Ground", "Scans.")) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (SVL)") +
+  xlab("Adult habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. SVL PGLS) by activity period
+acper.res.svl <- ggplot(data = filter(all.res.traits, Activity_period != "Unknown" & !is.na(pglsres.edsvl)), 
+                aes(x = reorder(Activity_period, pglsres.edsvl, FUN=mean), y = pglsres.edsvl)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Activity_period, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_act) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (SVL)") +
+  xlab("Activity period") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. SVL PGLS) by mating habitat
+mating.res.svl <- ggplot(data = filter(all.res.traits, Mating_habitat != "Unknown" & !is.na(pglsres.edsvl)), 
+                aes(x = reorder(Mating_habitat, pglsres.edsvl, FUN=mean), y = pglsres.edsvl)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  scale_color_manual(values = col_mat) +
+  geom_jitter(aes(color = Mating_habitat, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (SVL)") +
+  xlab("Mating habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. SVL PGLS) by life history
+life.res.svl <- ggplot(data = filter(all.res.traits, Life_history != "Unknown" & !is.na(pglsres.edsvl)), 
+                aes(x = reorder(Life_history, pglsres.edsvl, FUN=mean), y = pglsres.edsvl)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) + 
+  geom_jitter(aes(color = Life_history, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_lif) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (SVL)") +
+  xlab("Life history") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. SVL PGLS) by larval habitat
+larval.res.svl <- ggplot(data = filter(all.res.traits, Larval_habitat != "Unknown" & !is.na(pglsres.edsvl)), 
+                aes(x = reorder(Larval_habitat, pglsres.edsvl, FUN=mean), y = pglsres.edsvl)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Larval_habitat, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_larv) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (SVL)") +
+  xlab("Larval habitat") +
+  theme(legend.position = "none")
+
+#boxplot of eye investment (residuals of eye diameter v. SVL PGLS) by sexual dichromatism
+dichrom.res.svl <- ggplot(data = filter(all.res.traits, Sex_dichromatism != "Unknown" & !is.na(pglsres.edsvl)), 
+                aes(x = reorder(Sex_dichromatism, pglsres.edsvl, FUN=mean), y = pglsres.edsvl)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Sex_dichromatism, text = genus_species), 
+              shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_dich) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.6, -0.4, -0.2, 0.0, 0.2),
+                     labels = c("0.25x", "0.40x", "0.63x", "1.0x", "1.6x")) +
+  ylab("Eye investment (SVL)") +
+  xlab("Sex dichromatism") +
+  theme(legend.position = "none")
+
+#### Boxplots of relative corneal size (to eye size) by trait states ####
+
+#boxplot of corneal investment (residuals of cornea diameter v. eye diameter PGLS) by adult habitat
+hab.res.cor <- ggplot(data = filter(all.res.traits, Adult_habitat != "Unknown" & !is.na(pglsres.edcd)), 
+              aes(x = reorder(Adult_habitat, pglsres.edcd, FUN = mean), y = pglsres.edcd)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Adult_habitat, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_hab, name = "Adult habitat") +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+ scale_x_discrete(breaks=c("Aquatic", "Fossorial", "Subfossorial", "Ground-dwelling", "Scansorial", "Semiaquatic"), labels=c("Aq.", "Foss.", "Subfoss.","Ground", "Scans.", "Semiaq.")) +
+  scale_y_continuous(breaks = c(-0.2, -0.1, 0.0, 0.1, 0.2),
+                     labels = c("0.63x","0.79x", "1.0x", "1.3x","1.6x")) +
+  ylab("Corneal investment") +
+  xlab("Adult habitat") +
+  theme(legend.position = "none")
+
+#boxplot of corneal investment (residuals of cornea diameter v. eye diameter PGLS) by activity period
+acper.res.cor <- ggplot(data = filter(all.res.traits, Activity_period != "Unknown" & !is.na(pglsres.edcd)), 
+                aes(x = reorder(Activity_period, pglsres.edcd, FUN=mean), y = pglsres.edcd)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Activity_period, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_act) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.2, -0.1, 0.0, 0.1, 0.2),
+                     labels = c("0.63x","0.79x", "1.0x", "1.3x","1.6x")) +
+  ylab("Corneal investment") +
+  xlab("Activity period") +
+  theme(legend.position = "none")
+
+#boxplot of corneal investment (residuals of cornea diameter v. eye diameter PGLS) by mating habitat
+mating.res.cor <- ggplot(data = filter(all.res.traits, Mating_habitat != "Unknown" & !is.na(pglsres.edcd)), 
+                aes(x = reorder(Mating_habitat, pglsres.edcd, FUN=mean), y = pglsres.edcd)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Mating_habitat, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_mat) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.2, -0.1, 0.0, 0.1, 0.2),
+                     labels = c("0.63x","0.79x", "1.0x", "1.3x","1.6x")) +
+  ylab("Corneal investment") +
+  xlab("Mating habitat") +
+  theme(legend.position = "none")
+
+#boxplot of corneal investment (residuals of cornea diameter v. eye diameter PGLS) by life history
+life.res.cor <- ggplot(data = filter(all.res.traits, Life_history != "Unknown" & !is.na(pglsres.edcd)), 
+                aes(x = reorder(Life_history, pglsres.edcd, FUN=mean), y = pglsres.edcd)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Life_history, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_lif) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.2, -0.1, 0.0, 0.1, 0.2),
+                     labels = c("0.63x","0.79x", "1.0x", "1.3x","1.6x")) +
+  ylab("Corneal investment") +
+  xlab("Life history") +
+  theme(legend.position = "none")
+
+#boxplot of corneal investment (residuals of cornea diameter v. eye diameter PGLS) by larval habitat
+larval.res.cor <- ggplot(data = filter(all.res.traits, Larval_habitat != "Unknown" & !is.na(pglsres.edcd)), 
+                aes(x = reorder(Larval_habitat, pglsres.edcd, FUN=mean), y = pglsres.edcd)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Larval_habitat, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_larv) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  scale_y_continuous(breaks = c(-0.2, -0.1, 0.0, 0.1, 0.2),
+                     labels = c("0.63x","0.79x", "1.0x", "1.3x","1.6x")) +
+  ylab("Corneal investment") +
+  xlab("Larval_habitat") +
+  theme(legend.position = "none")
+
+#boxplot of corneal investment (residuals of cornea diameter v. eye diameter PGLS) by sexual dichromatism
+dichrom.res.cor <- ggplot(data = filter(all.res.traits, Sex_dichromatism != "Unknown" & !is.na(pglsres.edcd)), 
+                aes(x = reorder(Sex_dichromatism, pglsres.edcd, FUN=mean), y = pglsres.edcd)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA) +
+  stat_summary(fun = mean, colour="black", geom="point", 
+               shape=18, size=3, show.legend = FALSE) +
+  geom_jitter(aes(color = Sex_dichromatism, text = genus_species), shape = 19, size = 1.3, alpha = 0.5, position = position_jitter(0.15)) +
+  scale_color_manual(values = col_dich) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+ scale_y_continuous(breaks = c(-0.2, -0.1, 0.0, 0.1, 0.2),
+                     labels = c("0.63x","0.79x", "1.0x", "1.3x","1.6x")) +
+  ylab("Corneal investment") +
+  xlab("Sex dichromatism") +
+  theme(legend.position = "none")
+```
+```
