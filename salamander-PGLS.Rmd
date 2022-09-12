@@ -9,14 +9,117 @@ output:
     toc_float: TRUE
     code_fold: hide
 ---
+```{r setup, include = FALSE}
+
+# Load package libraries
+library(plyr)
+library(smatr)
+library(picante)
+library(nlme)
+library(ape)
+library(evobiR)
+library(geiger)
+library(caper)
+library(phytools) 
+library(phylotools)
+library(plotly)
+library(kableExtra)
+library(gridExtra)
+library(ggimage)
+#library(ggtree)
+library(grid)
+library(gtable)
+library(cowplot)
+library(knitr)
+library(mvMORPH)
+#library(evomap)
+library(tidyverse)
+
+# Markdown settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.height = 4.5, fig.width=8)
+
+```
 
 ## Molecular phylogeny
 
 Here we import an amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset. 
 
-```{r}
+```{r, fig.height=14, fig.width=5}
 caudatatree <- read.nexus("/Users/nicolebednarik/Desktop/salamander-eye-size-master/caudata-tree")
-plot.phylo(caudatatree, show.tip.label=TRUE)
+plot.phylo(caudatatree, show.tip.label=TRUE) 
+
+```
+
+#Load Datasets
+
+```{r}
+# Load raw data for measured frog specimens
+salamanders_morph <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/salamanders_analysis.csv", header=TRUE, na.strings=c("", "NA", " ","<1"))) #load raw data
+
+# Tidy dataset for analysis
+salamanders.subset <- salamanders_morph %>%
+  mutate(rootmass = Mass_g^(1/3)) %>% #adds cube root of mass
+  mutate(eyemean = rowMeans(salamanders_morph[c('ED_right_mm', 'ED_left_mm')], na.rm=TRUE)) %>% #adds mean of L/R eyes
+  mutate(cormean = rowMeans(salamanders_morph[c('CD_right_mm', 'CD_left_mm')], na.rm=TRUE)) %>%  #adds mean of L/R corneas
+  mutate(eyemean = na_if(eyemean, "NaN")) %>% #remove missing values
+  mutate(cormean = na_if(cormean, "NaN")) %>% #remove missing values
+  select(Order, Suborder, Family, Subfamily, Genus, Species, Genus_Species, SVL_mm, Mass_g, rootmass, ED_right_mm, ED_left_mm, eyemean, CD_right_mm, CD_left_mm, cormean) #keeps only columns of interest for analyses
+
+#Import ecological trait data
+traits <- data.frame(read.csv("/Users/nicolebednarik/Desktop/salamander-eye-size-master/salamanders_traits.csv"))
+
+#Change "Unknown" trait categorizations to NA so they will be excluded from statistical comparisons
+traits.subset <- traits %>%
+  mutate(Aquatic = factor(na_if(Aquatic, "Unknown"))) %>%
+  mutate(Semiaquatic = factor(na_if(Semiaquatic, "Unknown"))) %>%
+  mutate(Terrestrial = factor(na_if(Terrestrial, "Unknown"))) %>%
+  mutate(Scansorial = factor(na_if(Scansorial, "Unknown"))) %>%
+  mutate(Fossorial = factor(na_if(Fossorial, "Unknown"))) %>%
+  mutate(Subfossorial = factor(na_if(Subfossorial, "Unknown"))) %>%
+  mutate(Cave_dwelling = factor(na_if(Cave_dwelling, "Unknown"))) %>%
+  mutate(Nocturnal = factor(na_if(Nocturnal, "Unknown"))) %>%
+  mutate(Diurnal = factor(na_if(Diurnal, "Unknown"))) %>%
+  mutate(Paedomorphic = factor(na_if(Paedomorphic, "Unknown"))) %>%
+  mutate(Metamorphosizing = factor(na_if(Metamorphosizing, "Unknown"))) %>%
+  mutate(Direct_Development = factor(na_if(Direct_Development, "Unknown"))) %>%
+  mutate(Free_living = factor(na_if(Free_living, "Unknown"))) %>%
+  mutate(No_free_living = factor(na_if(No_free_living, "Unknown"))) %>%
+  mutate(Lentic_water = factor(na_if(Lentic_water, "Unknown"))) %>%
+  mutate(Lotic_water = factor(na_if(Lotic_water, "Unknown"))) %>%
+  mutate(Both_water = factor(na_if(Both_water, "Unknown"))) %>%
+  mutate(No_larva = factor(na_if(No_larva, "Unknown"))) %>%
+  mutate(Females_larger = factor(na_if(Females_larger, "Unknown"))) %>%
+  mutate(Males_larger = factor(na_if(Males_larger, "Unknown"))) %>%
+  mutate(No_SSD = factor(na_if(No_SSD, "Unknown"))) %>%
+  select(Genus_Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+# Merge morphology dataset with ecological trait dataset
+salamanders <- merge(salamanders.subset, traits.subset, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+
+# Check structure of final dataframe for analyses (numbers and factors in propoer columns)
+str(salamanders)
+
+##### eye diameter vs. the cube root of mass #####
+
+# Take mean of replicate specimens for each species (and remove specimens with missing data for two traits of interest)
+av.edmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.edmass <- merge(av.edmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.edmass <- av.edmass %>% select(Genus_Species, eye_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, Both_water, No_larva, Females_larger, Males_larger, No_SSD) 
+
+# Merge overall dataset with adult habitat information (and remove specimens with missing data)
+av.edmass.habitat1 <- merge(av.edmass, Adult_Habitat, by="Genus_Species", 
+                   all.x = TRUE, all.y = FALSE)
+av.edmass.habitat <- na.omit(av.edmass.habitat1)
+
 ```
 
 # Phylogenetic generalised least squares regressions
