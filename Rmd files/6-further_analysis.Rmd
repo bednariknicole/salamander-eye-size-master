@@ -50,6 +50,8 @@ sal.res <- sal.res[-c(35:460)]
 
 ```
 
+# Habitat plot
+
 ```{r}
 #see what the levels of development are named
 levels(as.factor(sal.res.2$Activity.Period))
@@ -95,9 +97,13 @@ ggplotly(habitat.rel)
 
 ```
 
+# Activity period plot
+
+(I think you started editing this one for development but you have that farther down so maybe this one should be activity period? No colors defined for activity period)
+
 ```{r}
 #boxplot of pgls residuals vs. activity period (relative eye size)
-development.rel <- ggplot(data = filter(sal.res.2, !is.na(Development)), aes(x = reorder(Development, pglsres.cdmass, fun=mean), y=pglsres.cdmass, fill=Development, shape=Development)) +
+development.rel <- ggplot(data = filter(sal.res.2, !is.na(Activity.Period)), aes(x = reorder(Activity.Period, pglsres.cdmass, fun=mean), y=pglsres.cdmass, fill=Activity.Period, shape=Activity.Period)) +
   geom_boxplot(notch = FALSE, outlier.shape = NA, alpha=0.5) +
   stat_summary(fun.y = mean, colour="black", geom="point", size=3, show_guide = FALSE) +
   geom_jitter(aes(text = Genus_Species, shape = Development), size = 1.3, alpha = 0.3, position = position_jitter(0.15)) +
@@ -120,12 +126,14 @@ ggplotly(development.rel)
 
 ```
 
+# Development plot 
+
 ```{r}
 #see what the levels of development are named
 levels(as.factor(sal.res.2$Development))
 
 #define a colorblind-friendly vector of colors for adult habitat
-col_dev <- c("direct developmnent" = "chartreuse3",
+col_dev <- c("direct development" = "chartreuse3",
              "metamorphosizing" = "steelblue3",
              "paedomorphic" = "slateblue1")
 
