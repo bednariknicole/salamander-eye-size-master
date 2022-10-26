@@ -1,0 +1,168 @@
+---
+title: "Salamander eye scaling and investment - boxplots"
+author: "Nicole Bednarik & Katie Thomas"
+date: 25 October 2022
+output:
+  html_document:
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    code_fold: show
+---
+
+```{r setup, include = FALSE}
+
+# Load package libraries
+library(plyr)
+library(geiger)
+library(caper)
+library(plotly)
+library(kableExtra)
+library(gridExtra)
+library(ggimage)
+library(grid)
+library(gtable)
+library(cowplot)
+library(knitr)
+library(tidyverse)
+
+# Markdown settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.height = 4.5, fig.width=8)
+
+```
+
+# Data
+
+First we import our tidied salamander morphology & trait binary dataset with the residuals of a cornea ~ cube root of mass PGLS as a column.
+
+```{r load-data}
+
+# Import tidied salamander eye size and trait data
+sal.res <- data.frame(read.csv("../Data/salamanders_residuals_binary.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+sal.res.2 <- data.frame(read.csv("../Data/salamanders_residuals_updated.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
+aquaticspecies <- data.frame(read.csv("../Data/aquaticspecies.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
+caudatatree <- read.nexus("../Data/caudata-tree")
+
+# Quick look at data structure
+str(sal.res)
+str(sal.res.2)
+
+sal.res <- sal.res[-c(35:460)]
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(sal.res.2) <- sal.res.2$Genus_Species
+#rownames(aquaticspecies) <-aquaticspecies$Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = sal.res.2)
+
+drops <- name.check(phy = caudatatree, data = sal.res.2)
+
+#drop the blind salamander from the phylogeny for plots
+tree.hab <- drop.tip(caudatatree, drops$tree_not_data)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp <- comparative.data(phy = tree.hab, data = sal.res.2, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp$dropped$tips #phylogeny
+
+```
+
+#Habitat PGLS
+
+```{r}
+# Run habitat pgls--------
+
+#PGLS cornea diameter vs. cube root of mass + habitat
+pgls_hab <- pgls(log10(cor_av) ~ log10(rootmass_av) + Adult.Habitat,
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_hab)
+
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.hab <- pgls.profile(pgls_hab, "lambda")
+plot(lambda.hab)
+```
+
+```{r}
+#main effects
+anova(pgls_hab)
+
+#print model output 
+summary(pgls_hab)
+```
+# Development PGLS
+
+```{r}
+# Run Development pgls--------
+
+#PGLS cornea diameter vs. cube root of mass + development
+pgls_dev <- pgls(log10(cor_av) ~ log10(rootmass_av) + Development,
+               data = sal.comp, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_dev)
+
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.dev <- pgls.profile(pgls_dev, "lambda")
+plot(lambda.dev)
+
+```
+
+```{r}
+#main effects
+anova(pgls_dev)
+
+#print model output 
+summary(pgls_dev)
+```
+
+#Aquatic PGLS
+redo the grouping of both category using same methods for regrouping of activity period
+```{r}
+# Run Aquatic pgls--------
+
+#PGLS cornea diameter vs. cube root of mass + adult habitat for aquatic species
+pgls_aq <- pgls(log10(cor_av) ~ log10(rootmass_av) + Adult.Habitat,
+               data = aquaticspecies, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_aq)
+
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.aq <- pgls.profile(pgls_aq, "lambda")
+plot(lambda.aq)
+
+```
+
+```{r}
+#main effects
+anova(pgls_aq)
+
+#print model output 
+summary(pgls_aq)
+```
+
+do life history and larval habitat PGLS
