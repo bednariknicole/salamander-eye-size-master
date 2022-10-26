@@ -43,6 +43,12 @@ sal.res.2 <- data.frame(read.csv("../Data/salamanders_residuals_updated.csv", he
 aquaticspecies <- data.frame(read.csv("../Data/aquaticspecies.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
 caudatatree <- read.nexus("../Data/caudata-tree")
 
+#change activity period for sal.res2 to a binary nocturnal vs. not nocturnal
+sal.res.new <- sal.res.2 %>%
+  #make new column called activity2 and change "both" and "diurnal" to "non-nocturnal"
+  mutate(activity2 = recode(Activity.Period, "both" = "non-nocturnal", "diurnal" = "non-nocturnal", "nocturnal" = "nocturnal"))
+
+
 # Quick look at data structure
 str(sal.res)
 str(sal.res.2)
