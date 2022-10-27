@@ -58,22 +58,30 @@ sal.res <- sal.res[-c(35:460)]
 #Make row names of dataset the species names (so it will match phylogeny tips)
 rownames(sal.res.2) <- sal.res.2$Genus_Species
 #rownames(aquaticspecies) <-aquaticspecies$Species
+rownames(sal.res.new) <- sal.res.new$Genus_Species
 
 #check that names match in dataframe and tree
 name.check(phy = caudatatree, data = sal.res.2)
+name.check(phy = caudatatree, data = sal.res.new)
 
 drops <- name.check(phy = caudatatree, data = sal.res.2)
+drops1 <- name.check(phy = caudatatree, data = sal.res.new)
 
 #drop the blind salamander from the phylogeny for plots
 tree.hab <- drop.tip(caudatatree, drops$tree_not_data)
+tree.act <- drop.tip(caudatatree, drops$tree_not_data)
 
 #use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
 sal.comp <- comparative.data(phy = tree.hab, data = sal.res.2, 
                             names.col = Genus_Species, vcv = TRUE, 
                             na.omit = FALSE, warn.dropped = TRUE)
+sal.comp.1 <- comparative.data(phy = tree.act, data = sal.res.new, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
 
 #check for dropped tips or dropped species
 sal.comp$dropped$tips #phylogeny
+sal.comp.1$dropped$tips #phylogeny
 
 ```
 
@@ -169,6 +177,85 @@ anova(pgls_aq)
 
 #print model output 
 summary(pgls_aq)
+```
+
+#Activity Period
+
+##Activity Period Plot
+
+```{r}
+#see what the levels of activity period are named
+levels(as.factor(sal.res.new$activity2))
+
+#define a colorblind-friendly vector of colors for adult habitat
+col_act <- c("nocturnal" = "#330099",
+             "non-nocturnal" = "#9966FF")
+
+#now you can see that each level is assigned a hex color when you look at the vector
+col_act
+
+#make a vector of point shapes for levels
+shape_act <- c("nocturnal" = 25,
+             "non-nocturnal" = 24)
+
+#see that each state has a shape now
+shape_act
+```
+
+```{r}
+#boxplot of pgls residuals vs. activity period (relative eye size)
+activityperiod.rel <- ggplot(data = filter(sal.res.new, !is.na(Activity.Period)), aes(x = reorder(activity2, pglsres.cdmass, fun=mean), y=pglsres.cdmass, fill=activity2, shape=activity2)) +
+  geom_boxplot(notch = FALSE, outlier.shape = NA, alpha=0.5) +
+  stat_summary(fun.y = mean, colour="black", geom="point", size=3, show_guide = FALSE) +
+  geom_jitter(aes(text = Genus_Species, shape = activity2), size = 1.3, alpha = 0.3, position = position_jitter(0.15)) +
+  theme(text = element_text(size=14), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text = element_text(angle = 0, size = 9)) +
+  ylab("Relative cornea size") +
+  xlab("Activity Period") +
+  theme(legend.position = "none") +
+# use our custom colors for activity period
+  scale_fill_manual(values = col_act, name = "Activity Period") +
+# use our custom shapes for points
+  scale_shape_manual(values = shape_act, name = "Activity Period") 
+
+#print plot
+activityperiod.rel
+
+#look at the plot with the plotly package - you can hover over data points to see what each species is, great way to check outliers!
+library(plotly)
+ggplotly(activityperiod.rel)
+
+```
+##Activity Period PGLS
+
+```{r}
+# Run Activity Period pgls--------
+
+#PGLS cornea diameter vs. cube root of mass + activity period
+pgls_act <- pgls(log10(cor_av) ~ log10(rootmass_av) + activity2,
+               data = sal.comp.1, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#diagnostic plots
+par(mar = c(4,4,2,2))
+par(mfrow = c(2, 2))
+plot(pgls_act)
+
+par(mfrow = c(1, 1))
+
+#Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+lambda.act <- pgls.profile(pgls_act, "lambda")
+plot(lambda.act)
+
+```
+
+```{r}
+#main effects
+anova(pgls_act)
+
+#print model output 
+summary(pgls_act)
 ```
 
 do life history and larval habitat PGLS
