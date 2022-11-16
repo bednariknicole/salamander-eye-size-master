@@ -1,0 +1,440 @@
+---
+title: "Salamander eye scaling and investment"
+author: "Nicole Bednarik & Katie Thomas"
+date: 8 August 2022
+output:
+  html_document:
+    theme: flatly
+    toc: TRUE
+    toc_float: TRUE
+    code_fold: show
+---
+
+```{r setup, include = FALSE}
+
+# Load package libraries
+library(plyr)
+library(smatr)
+library(picante)
+library(nlme)
+library(ape)
+library(evobiR)
+library(geiger)
+library(caper)
+library(phytools)
+library(phylotools)
+library(plotly)
+library(kableExtra)
+library(gridExtra)
+library(ggimage)
+#library(ggtree)
+library(grid)
+library(gtable)
+library(cowplot)
+library(knitr)
+library(mvMORPH)
+#library(evomap)
+library(tidyverse)
+
+# Markdown settings
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.height = 4.5, fig.width=8)
+
+```
+
+# Data
+
+First we import our tidied salamander morphology & trait dataset. 
+
+```{r load-data}
+
+# Import tidied salamander eye size and trait data
+salamanders <- data.frame(read.csv("../Data/Tidy/salamanders_tidy.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+
+# Quick look at data structure
+str(salamanders)
+```
+
+Next, we import the amphibian tree from Jetz and Pyron (2019) that has been pruned to match the salamander species in this dataset.
+
+```{r, fig.height=18, fig.width=7}
+
+#Import pruned phylogeny
+caudatatree <- read.nexus("../Data/Tidy/caudata-tree.nex")
+
+#Plot tree
+plot.phylo(caudatatree, show.tip.label=TRUE, cex = 0.7)
+
+```
+
+# Interspecific allometry using PGLS
+
+Here, we will use phylogenetic least-squares (PGLS) regressions to see how eyes are scaling with body size across different species of salamanders with different ecologies. First, we find species means for various morphological parameters.
+
+```{r species-av}
+#### species means for eye diameter and SVL ####
+av.edsvl <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(SVL_mm))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), svl_av = mean(SVL_mm), n = n())
+
+## Merge data means with other column info
+av.edsvl <- merge(av.edsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.edsvl <- av.edsvl %>% select(Genus_Species, eye_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for eye diameter and cube root of mass ####
+av.edmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(eyemean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.edmass <- merge(av.edmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only, keeping only trait columns
+av.edmass <- av.edmass %>% select(Genus_Species, eye_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for cube root of mass and SVL ####
+av.svlmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(SVL_mm) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(svl_av = mean(SVL_mm), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.svlmass <- merge(av.svlmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.svlmass <- av.svlmass %>% select(Genus_Species, svl_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+  
+#### species means for cornea diameter and eye diameter ####
+av.cded <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(eyemean))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cor_av = mean(cormean), eye_av = mean(eyemean), n = n())
+
+## Merge data means with other column info
+av.cded <- merge(av.cded, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cded <- av.cded %>% select(Genus_Species, cor_av, eye_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for cornea diameter and SVL ####
+av.cdsvl <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(SVL_mm))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cor_av = mean(cormean), svl_av = mean(SVL_mm), n = n())
+
+## Merge data means with other column info
+av.cdsvl <- merge(av.cdsvl, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cdsvl <- av.cdsvl %>% select(Genus_Species, cor_av, svl_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+#### species means for cornea diameter and cube root of mass ####
+av.cdmass <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>% 
+  filter(!(is.na(cormean) | is.na(rootmass))) %>% 
+  group_by(Genus_Species) %>%
+  summarise(cor_av = mean(cormean), rootmass_av = mean(rootmass), n = n())
+
+## Merge data means with other column info
+av.cdmass <- merge(av.cdmass, salamanders[match(unique(salamanders$Genus_Species), salamanders$Genus_Species), ], by="Genus_Species", all.x = TRUE, all.y = FALSE)
+
+#Keep averages and associated traits only
+av.cdmass <- av.cdmass %>% select(Genus_Species, cor_av, rootmass_av, n, Order, Suborder, Family, Subfamily, Genus, Species, Gill_Presence, Aquatic, Semiaquatic, Terrestrial, Scansorial, Fossorial, Subfossorial, Cave_dwelling, Nocturnal, Diurnal, Paedomorphic, Metamorphosizing, Direct_Development, Free_living, No_free_living, Lentic_water, Lotic_water, No_larva, Females_larger, Males_larger, No_SSD)
+
+
+
+av.sal <- salamanders %>% 
+  mutate_if(is.character, as.factor) %>%
+  group_by(Genus_Species) %>%
+  summarise(eye_av = mean(eyemean), 
+            cor_av = mean(cormean),
+            svl_av = mean(SVL_mm), 
+            rootmass_av = mean(rootmass), 
+            n = n())
+
+```
+
+In order to fit a PGLS regression in caper, we first need to make a comparative data object that includes our dataset and our phylogeny. Note that the gilled Pleurodeles waltl will be dropped from this, as there can only be one row for each species. 
+
+```{r}
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.edsvl) <- av.edsvl$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.edsvl)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp1 <- comparative.data(phy = caudatatree, data = av.edsvl, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp1$dropped$tips #phylogeny
+sal.comp1$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.edmass) <- av.edmass$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.edmass)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp2 <- comparative.data(phy = caudatatree, data = av.edmass, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp2$dropped$tips #phylogeny
+sal.comp2$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.svlmass) <- av.svlmass$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.svlmass)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp3 <- comparative.data(phy = caudatatree, data = av.svlmass, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp3$dropped$tips #phylogeny
+sal.comp3$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.cded) <- av.cded$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.cded)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp4 <- comparative.data(phy = caudatatree, data = av.cded, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp4$dropped$tips #phylogeny
+sal.comp4$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.cdsvl) <- av.cdsvl$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.cdsvl)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp5 <- comparative.data(phy = caudatatree, data = av.cdsvl, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp5$dropped$tips #phylogeny
+sal.comp5$dropped$unmatched.rows #dataset
+
+#Make row names of dataset the species names (so it will match phylogeny tips)
+rownames(av.cdmass) <- av.cdmass$Genus_Species
+
+#check that names match in dataframe and tree
+name.check(phy = caudatatree, data = av.cdmass)
+
+#use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+sal.comp6 <- comparative.data(phy = caudatatree, data = av.cdmass, 
+                            names.col = Genus_Species, vcv = TRUE, 
+                            na.omit = FALSE, warn.dropped = TRUE)
+
+#check for dropped tips or dropped species
+sal.comp6$dropped$tips #phylogeny
+sal.comp6$dropped$unmatched.rows #dataset
+```
+
+# Relative eye size and eye investment in salamanders
+
+To investigate how relative eye size differed across species with different ecological traits, we looked at the residuals from PGLS fits of cornea diameter vs. body size. 
+
+First, we added residuals of PGLS fits to our datasets by species.
+
+
+```{r pgls-residuals}
+#PGLS cornea diameter vs. cube root of mass ------------
+pgls_cdmass <- pgls(log10(cor_av) ~ log10(rootmass_av), 
+               data = sal.comp6, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#Residuals for PGLS of cornea diameter ~ cube root of mass
+
+#extract pgls residuals 
+pglsres.cdmass <- residuals(pgls_cdmass) 
+
+#name residuals
+colnames(pglsres.cdmass) <- "pglsres.cdmass" 
+
+#add rownames to original dataframe
+rownames(av.cdmass) <- av.cdmass$mod_tiplabel 
+
+#merge residuals with original data by rowname
+av.cdmass.phy <- merge(av.cdmass, pglsres.cdmass, by = "row.names") 
+
+#PGLS cornea diameter vs. SVL ------------
+pgls_cdsvl <- pgls(log10(cor_av) ~ log10(svl_av), 
+               data = sal.comp5, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#Residuals for PGLS of cornea diameter ~ SVL 
+
+#extract pgls residuals
+pglsres.cdsvl <- residuals(pgls_cdsvl) 
+
+#name residuals
+colnames(pglsres.cdsvl) <- "pglsres.cdsvl"
+
+#add rownames to original dataframe
+rownames(av.sal) <- av.sal$mod_tiplabel 
+
+#merge residuals with original data by rowname
+av.sal.phy <- merge(av.sal, pglsres.cdsvl, by = "row.names") 
+
+#PGLS eye diameter vs. cornea diameter ------------
+pgls_edcd <- pgls(log10(eye_av) ~ log10(cor_av), 
+               data = sal.comp4, 
+               lambda = "ML", #uses Maximum Likelihood estimate of lambda
+               param.CI = 0.95)
+
+#residuals for PGLS of eye diameter ~ cornea diameter 
+
+#extract pgls residuals
+pglsres.edcd <- residuals(pgls_edcd) 
+
+#name residuals
+colnames(pglsres.edcd) <- "pglsres.edcd" 
+
+#add rownames to original dataframe
+rownames(av.sal) <- av.sal$mod_tiplabel 
+
+#merge residuals with original data by rowname
+av.sal.phy <- merge(av.sal, pglsres.edcd, by = "row.names") 
+```
+
+## Phylogenetic distribution of absolute and relative eye size
+
+We then plotted absolute eye size and relative eye investment (represented by the residual of the eye size vs. body size PGLS) onto the anuran phylogeny. 
+
+```{r plot-phytools, fig.height = 15, fig.width = 8}
+
+# color vectors -------
+
+#create vector of colors for activity period
+col_act <- c("Both" = "deeppink3",
+             "Diurnal" = "darkgoldenrod1", 
+             "Nocturnal" = "blueviolet",
+             "Unknown" = "gray")
+
+# create vector of colors for life history
+col_lif <- c("Free-living larvae" = "darkturquoise", 
+         "No free-living larvae" = "black", 
+         "Unknown" = "gray")
+
+# create vector of colors for larval habitat
+col_larv <- c("Lentic water" = "royalblue1", 
+         "Lotic water" = "skyblue1",
+         "No larvae" = "lightcoral",
+         "Obscured" = "darkslateblue",
+         "On land" = "lightpink4",
+         "Unknown" = "gray")
+
+# create vector of colors for development
+col_dich <- c("Direct Development" = "black", 
+         "Metamorphosizing" = "chartreuse2",
+         "Paedomorphic" = "gray")
+
+
+# Prep data and phylogeny -----
+
+#subset data for cornea diameter and mass
+sal.bars <- av.sal.phy %>%
+  mutate(oldtip = mod_tiplabel, 
+         newtip = genus_species, 
+         abseye = cor_av, 
+         inveye = pglsres.cormass, 
+         hab = Adult_habitat,
+         act = Activity_period, 
+         lif = Life_history,
+         larv = Larval_habitat,
+         dev = Development,
+         family = Family) %>%
+  select(oldtip, newtip, abseye, inveye, hab, act, mat, lif, larv, dev, family)
+
+# set row names in dataset to match the tip labels in the tree
+row.names(cormass.bars) <- cormass.bars$newtip
+
+#drop phylogeny tips not in dataset)
+tree_cormass <- drop.tip(frog.tree, frog.tree$tip.label[!(frog.tree$tip.label %in% cormass.bars$oldtip)])
+
+#ladderize tree
+tree_edmass <- ladderize(tree_cormass)
+
+# Make Genus_species tip labels based on  Amphibian Species of the World names (and no family at end)
+sp.tips <- data.frame(old = av.edmass$mod_tiplabel, new = av.edmass$genus_species)
+
+# replace tip labels in phylogeny
+tree_edmass <- sub.taxa.label(tree_edmass, sp.tips)
+
+#check that phylogeny and data match exactly
+name.check(tree_edmass, edmass.bars)
+
+#resort trait dataset to the order of tree tip labels
+edmass.bars <- edmass.bars[tree_edmass$tip.label, ] 
+
+#make trait vector for absolute eye size
+aveye <- as.vector(edmass.bars$abseye) 
+
+#add tip label names to vector
+names(aveye) <- edmass.bars$newtip 
+
+#make trait vector for eye investment (PGLS residuals)
+inv.mass <- as.vector(edmass.bars$inveye) #residuals of pgls
+names(inv.mass) <- edmass.bars$newtip
+
+#make trait vector of habitats
+habs.edmass <- as.vector(edmass.bars$hab) 
+
+#make vector of colors corresponding to phylogeny tips
+tipcols.hab <- unname(col_hab[habs.edmass]) 
+
+
+# Phylogeny with absolute eye diameters -----
+
+#plot tree with eye size bars ant tip labels
+plotTree.wBars(tree_edmass, aveye, 
+               scale = 0.04, 
+               tip.labels = TRUE, 
+               offset = 0.35,
+               ftype = "bi",
+               fsize = 0.8,
+               col = tipcols.hab)
+
+#add legend for habitat states
+legend(x = "left", legend = c("Aquatic", "Fossorial", "Ground-dwelling", "Scans orial", "Semiaquatic", "Subfossorial"), pch = 22, pt.cex= 2, pt.bg = col_hab, cex = 1, bty = "n", horiz = F)
+
+# Phylogeny with relative eye size (compared to mass) -------
+
+#plot tree with relative eye size bars
+plotTree.wBars(tree_edmass, inv.mass, 
+               scale = 0.7, 
+               tip.labels = FALSE, 
+               col = tipcols.hab,
+               plot = FALSE, 
+               add = TRUE)
+
+```

@@ -1,5 +1,5 @@
 ---
-title: "Salamander eye scaling and investment - boxplots"
+title: "PGLS Analysis"
 author: "Nicole Bednarik & Katie Thomas"
 date: 25 October 2022
 output:
@@ -38,9 +38,9 @@ First we import our tidied salamander morphology & trait binary dataset with the
 ```{r load-data}
 
 # Import tidied salamander eye size and trait data
-sal.res <- data.frame(read.csv("../Data/salamanders_residuals_binary.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
-sal.res.2 <- data.frame(read.csv("../Data/salamanders_residuals_updated.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
-aquaticspecies <- data.frame(read.csv("../Data/aquaticspecies.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
+sal.res <- data.frame(read.csv("../Data/Tidy/salamanders_residuals_binary.csv", header=TRUE, na.strings=c("", "NA", " ","<1")))
+sal.res.2 <- data.frame(read.csv("../Data/Tidy/salamanders_residuals_updated.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
+aquaticspecies <- data.frame(read.csv("../Data/Raw/aquaticspecies.csv", header=TRUE, na.strings=c("", "NA", " ", "<1")))
 caudatatree <- read.nexus("../Data/caudata-tree")
 
 #change activity period for sal.res2 to a binary nocturnal vs. not nocturnal
@@ -57,31 +57,44 @@ sal.res <- sal.res[-c(35:460)]
 
 #Make row names of dataset the species names (so it will match phylogeny tips)
 rownames(sal.res.2) <- sal.res.2$Genus_Species
-#rownames(aquaticspecies) <-aquaticspecies$Species
+#rownames(aquaticspecies) <-aquaticspecies$Genus_Species
 rownames(sal.res.new) <- sal.res.new$Genus_Species
+
 
 #check that names match in dataframe and tree
 name.check(phy = caudatatree, data = sal.res.2)
 name.check(phy = caudatatree, data = sal.res.new)
+#name.check(phy = caudatatree, data = aquaticspecies)
 
 drops <- name.check(phy = caudatatree, data = sal.res.2)
 drops1 <- name.check(phy = caudatatree, data = sal.res.new)
+#drops2 <- name.check(phy = caudatatree, data = aquaticspecies)
 
 #drop the blind salamander from the phylogeny for plots
 tree.hab <- drop.tip(caudatatree, drops$tree_not_data)
 tree.act <- drop.tip(caudatatree, drops$tree_not_data)
+#tree.aq <- drop.tip(caudatatree, drops$tree_not_data)
 
 #use caper function to combine phylogeny and data into one object (this function also matches species names in tree and dataset)
+
+#sal.res.2 <- factor(Larval.Habitat, levels=c("no larva", "lentic water", "lotic water", "both"))
 sal.comp <- comparative.data(phy = tree.hab, data = sal.res.2, 
                             names.col = Genus_Species, vcv = TRUE, 
                             na.omit = FALSE, warn.dropped = TRUE)
 sal.comp.1 <- comparative.data(phy = tree.act, data = sal.res.new, 
                             names.col = Genus_Species, vcv = TRUE, 
                             na.omit = FALSE, warn.dropped = TRUE)
+#sal.comp.2 <- comparative.data(phy = tree.aq, data = aquaticspecies,
+                            #names.col = Genus_Species, vcv = TRUE,
+                            #na.omit = FALSE, warn.dropped = TRUE)
+
+levels(factor(sal.res.2$Larval.Habitat))
+sal.res.2 <- ordered(sal.res.2$Larval.Habitat, levels=c("no larva", "lentic water", "lotic water", "both"))
 
 #check for dropped tips or dropped species
 sal.comp$dropped$tips #phylogeny
 sal.comp.1$dropped$tips #phylogeny
+#sal.comp.2$dropped$tips
 
 ```
 
@@ -92,7 +105,7 @@ sal.comp.1$dropped$tips #phylogeny
 
 #PGLS cornea diameter vs. cube root of mass + habitat
 pgls_hab <- pgls(log10(cor_av) ~ log10(rootmass_av) + Adult.Habitat,
-               data = sal.comp, 
+               data = sal.comp.1, 
                lambda = "ML", #uses Maximum Likelihood estimate of lambda
                param.CI = 0.95)
 
@@ -122,7 +135,7 @@ summary(pgls_hab)
 
 #PGLS cornea diameter vs. cube root of mass + development
 pgls_dev <- pgls(log10(cor_av) ~ log10(rootmass_av) + Development,
-               data = sal.comp, 
+               data = sal.comp.1, 
                lambda = "ML", #uses Maximum Likelihood estimate of lambda
                param.CI = 0.95)
 
@@ -148,7 +161,6 @@ summary(pgls_dev)
 ```
 
 #Aquatic PGLS
-redo the grouping of both category using same methods for regrouping of activity period
 ```{r}
 # Run Aquatic pgls--------
 
@@ -395,10 +407,12 @@ ggplotly(larvalhabitat.rel)
 # Run Larval Habitat pgls--------
 
 #PGLS cornea diameter vs. cube root of mass + larval habitat
+
 pgls_larv <- pgls(log10(cor_av) ~ log10(rootmass_av) + Larval.Habitat,
                data = sal.comp, 
                lambda = "ML", #uses Maximum Likelihood estimate of lambda
                param.CI = 0.95)
+
 
 #diagnostic plots
 par(mar = c(4,4,2,2))
@@ -408,6 +422,7 @@ plot(pgls_larv)
 par(mfrow = c(1, 1))
 
 #Likelihood plot for Pagel's lambda. Solid red line indicates estimate for lambda and broken red lines indcaite the 95% confidence interval
+
 lambda.larv <- pgls.profile(pgls_larv, "lambda")
 plot(lambda.larv)
 
