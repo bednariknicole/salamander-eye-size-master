@@ -1,14 +1,19 @@
-In the salamander-PGLS markdown, in line 35 when it makes a list of taxa to drop from the tree to 
-not be used in the analyses (those that I don't have an external eye diameter measurement for, 
-like some of the aquatic ones) the list just includes every species. So, when I go to run the 
-models, there is no data to run it with because R has dropped these 'unwanted' tips from the 
-phylogeny. I think what might be happening is in the tree, the names are written like 
-'Dicamptodon copei', and in my datasets I have it written like 'Dicamptodon_copei', so R 
-recognizes that none of them match. If this is the reason why it's not working, should I change 
-one of them to be consistent? Or if you see another problem, let me know.
 
-Additionally, is there a way to stretch the phylogenetic tree vertically in R? It is so smushed 
-together that I cannot read the species names. Is this just an issue with how the file was
-saved on my computer?
+Questions! 11/21/22
 
-I also uploaded the most updated versions of the csv files I used in the Data folder.
+In Rmd file 3-allometry...
+
+In line 164 when checking if the names in the dataframe match those in the tree, there is like 9 species that don't match. I'm unsure why this 
+is happening because when I look at the dataframe, the species are there.
+In lines 297, 337, 376, and 415, the best fit lines are pretty off. I tried a couple different changes but none seem to be working. I'm not sure 
+if the problem is because of the species that aren't matching from the problem above.
+
+In Rmd file 4-eye_investment...
+
+In line 173 and below, I encounter the same problem with names not matching as in the previous rmd.
+
+In Rmd file 7-PGLS.analysis...
+
+How to specify factor level reference with a PGLS analysis. I was trying it for the larval habitat vs. eye size boxplot, but then I gave up.
+
+Thank you!
